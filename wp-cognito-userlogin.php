@@ -266,13 +266,58 @@ class WP_Cognito_UserLogin {
      * @since 11/28/2018
      */
     public function setupFrontend() {
-        
+		$this->fetchCognitoSession();
         if( !$this->hasAccessToPage() ) {
             echo 'No Access';
             exit();
             //header( 'Location: /' );
         }
-    }
+	}
+	
+	/**
+	 * Check for ?code= query string and fetch data
+	 * 
+	 * @since 11/28/2018
+	 */
+	private function fetchCognitoSession() {
+		$code = esc_attr( $_REQUEST['code'] );
+		
+		if( !isset( $code ) ) {
+			return false;
+		}
+
+		if( empty( $code ) ) {
+			return false;
+		}
+
+		if( strlen( $code ) < 100 ) {
+			return false;
+		}
+
+		$response = wp_remote_request( 'https://315c29zh3k.execute-api.us-west-2.amazonaws.com/prod/sessions', [
+			'method' => 'DELETE',
+			'headers' => [
+				'x-code' => $code
+			]
+		] );
+
+		$body = json_decode( $response['body'] );
+		$this->accessToken = $body->accessToken;
+		$this->idToken = $body->idToken;
+		$this->refreshToken = $body->refreshToken;
+
+		$this->setSessions();
+
+		$requestUri = str_replace( get_site_url(), '', $this->requestUri );
+		if( $requestUri == '' ) {
+			$requestUri = '/hello';
+		}
+
+		header( "Location: " . $requestUri );
+		echo "Location: " . $requestUri;
+		echo '<pre>'.print_r( $body, true ).'</pre>';
+		exit();
+	}
 
     /**
      * Adds a checkbox to the post_submitbox_misc_actions box
@@ -310,3 +355,4 @@ class WP_Cognito_UserLogin {
 }
 
 new WP_Cognito_UserLogin();
+ 
