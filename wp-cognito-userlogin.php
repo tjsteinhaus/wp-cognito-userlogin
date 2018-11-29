@@ -24,7 +24,7 @@ class WP_Cognito_UserLogin {
      */
     private $awsclient;
 
-    private $clientID = '2htn7hclrnvdkopm564bvvr4ao';
+    private $clientID;
 
     private $accessToken;
 
@@ -45,7 +45,12 @@ class WP_Cognito_UserLogin {
         add_action('init', function() {
             if( is_admin() ) {
                 add_action( 'post_submitbox_misc_actions', array( $this, 'securePageCheckboxAction' ) );
-                add_action( 'save_post', array( $this, 'securePageCheckboxActionPost' ) );
+				add_action( 'save_post', array( $this, 'securePageCheckboxActionPost' ) );
+				add_action( 'admin_menu', function() {
+					add_menu_page('Cognito Settings', 'Cognito Settings', 'administrator', __FILE__, array( $this, 'cognitoOptionsPage' ) );
+				} );
+
+				add_action( 'admin_init', array( $this, 'registerSettings' ) );
                 return;
             }
 
@@ -53,23 +58,25 @@ class WP_Cognito_UserLogin {
                 session_start();
             }
             
-            // Setup Cognito Connection
-            $this->cognitoConnection();
-            $this->getSessions();
-            $this->parseIdToken();
+			// Setup Cognito Connection
+			if( $this->areOptionsSet() ) {
+				$this->cognitoConnection();
+				$this->getSessions();
+				$this->parseIdToken();
+				
+				if( WP_DEBUG ) {
+					echo '<pre>'.print_r( $_SESSION, true ).'</pre>';
+					echo 'User Data <pre>'.print_r( $this->userData, true ). '</pre>';
+					echo 'Client Id <pre>'.print_r( $this->clientID, true ). '</pre>';
+					echo 'Refresh Token <pre>'.print_r( $this->refreshToken, true ). '</pre>';
+					echo 'AccessToken <pre>'.print_r( $this->accessToken, true ). '</pre>';
+					echo 'ID Token <pre>'.print_r( $this->idToken, true ). '</pre>';
+				}
 
-            if( WP_DEBUG ) {
-                echo '<pre>'.print_r( $_SESSION, true ).'</pre>';
-                echo 'User Data <pre>'.print_r( $this->userData, true ). '</pre>';
-                echo 'Client Id <pre>'.print_r( $this->clientID, true ). '</pre>';
-                echo 'Refresh Token <pre>'.print_r( $this->refreshToken, true ). '</pre>';
-                echo 'AccessToken <pre>'.print_r( $this->accessToken, true ). '</pre>';
-                echo 'ID Token <pre>'.print_r( $this->idToken, true ). '</pre>';
-            }
+				$this->isExpired();            
 
-            $this->isExpired();            
-
-            add_action( 'wp', array( $this, 'setupFrontend' ) );
+				add_action( 'wp', array( $this, 'setupFrontend' ) );
+			}
         }, 1);
     }
 
@@ -81,16 +88,39 @@ class WP_Cognito_UserLogin {
     private function cognitoConnection() {
         $this->awsclient = new CognitoIdentityProviderClient( [
             'version' => 'latest',
-            'region' => 'us-west-2',
-            'app_client_id' => 'eclk7257u28dc1q01q0r0o1mh',
-            'user_pool_id' => 'us-west-2_EW4jBNH5u',
+            'region' => get_option( 'aws_region' ),
+            'app_client_id' => get_option( 'app_client_id' ),
+            'user_pool_id' => get_option( 'aws_userpool_id' ),
             'credentials' => [
-                'key' => 'AKIAIAHYENLZZMDIDDKQ',
-                'secret' => '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',
+                'key' => get_option( 'aws_key_id' ),
+                'secret' => get_option( 'aws_key_secret' ),
             ],
             'http' => [ 'verify' => false ]
         ] );
-    }
+	}
+	
+	/**
+	 * Options set?
+	 */
+	private function areOptionsSet() {
+		$options = array(
+			'session_url',
+			'login_url',
+			'app_client_id',
+			'aws_key_id',
+			'aws_key_secret',
+			'aws_region',
+			'aws_userpool_id'
+		);
+
+		foreach( $options as $option ) {
+			if( get_option( $option ) == '' ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
 
     /**
      * Parse IdToken and set data
@@ -142,7 +172,7 @@ class WP_Cognito_UserLogin {
         if( empty( $this->refreshToken ) ) return;
 
         $refresh = $this->awsclient->initiateAuth( [
-            'ClientId' => '2htn7hclrnvdkopm564bvvr4ao',
+            'ClientId' => $this->client_id,
             'AuthFlow' => 'REFRESH_TOKEN',
             'AuthParameters' => [
                 'REFRESH_TOKEN' => $this->refreshToken
@@ -206,7 +236,8 @@ class WP_Cognito_UserLogin {
     private function deleteSessions() {
         unset( $_SESSION['cognitoAccessToken'] );
         unset( $_SESSION['cognitoRefreshToken'] );
-        unset( $_SESSION['cognitoIdToken'] );
+		unset( $_SESSION['cognitoIdToken'] );
+		unset( $_SESSION['cognitoClientId'] );
     }
 
     /**
@@ -266,13 +297,58 @@ class WP_Cognito_UserLogin {
      * @since 11/28/2018
      */
     public function setupFrontend() {
-        
+		$this->fetchCognitoSession();
         if( !$this->hasAccessToPage() ) {
-            echo 'No Access';
-            exit();
-            //header( 'Location: /' );
+            header( 'Location: ' . get_option( 'login_url' ) );
         }
-    }
+	}
+	
+	/**
+	 * Check for ?code= query string and fetch data
+	 * 
+	 * @since 11/28/2018
+	 */
+	private function fetchCognitoSession() {
+		$code = esc_attr( $_REQUEST['code'] );
+		
+		if( !isset( $code ) ) {
+			return false;
+		}
+
+		if( empty( $code ) ) {
+			return false;
+		}
+
+		if( strlen( $code ) < 100 ) {
+			return false;
+		}
+
+		if( !( $session_url = get_option( 'session_url' ) ) ) {
+			return false;
+		}
+		
+		$response = wp_remote_request( $session_url, [
+			'method' => 'DELETE',
+			'headers' => [
+				'x-code' => $code
+			]
+		] );
+
+		$body = json_decode( $response['body'] );
+		$this->accessToken = $body->accessToken;
+		$this->idToken = $body->idToken;
+		$this->refreshToken = $body->refreshToken;
+
+		$this->setSessions();
+
+		$requestUri = str_replace( get_site_url(), '', $body->redirectUri );
+		if( $requestUri == '' ) {
+			$requestUri = '/';
+		}
+
+		header( "Location: " . $requestUri );
+		exit();
+	}
 
     /**
      * Adds a checkbox to the post_submitbox_misc_actions box
@@ -305,8 +381,77 @@ class WP_Cognito_UserLogin {
         if( wp_is_post_revision( $post_id ) ) return;
 
         update_post_meta( $post_id, 'securePage', $_POST['securePage'] );
-    }
+	}
+	
+	/**
+	 * Register settings for admin controls
+	 * 
+	 * @since 11/29/2018
+	 */
+	public function registerSettings() {
+		register_setting( 'cognito-settings', 'session_url' );
+		register_setting( 'cognito-settings', 'login_url' );
+		register_setting( 'cognito-settings', 'app_client_id' );
+		register_setting( 'cognito-settings', 'aws_key_id' );
+		register_setting( 'cognito-settings', 'aws_key_secret' );
+		register_setting( 'cognito-settings', 'aws_region' );
+		register_setting( 'cognito-settings', 'aws_userpool_id' );
+	}
 
+	/**
+	 * Cognito Options Page
+	 * 
+	 * @since 11/29/2018
+	 */
+	public function cognitoOptionsPage() {
+		?>
+		<div class="wrap">
+			<h1>Cognito Settings</h1>
+			<form method="POST" action="options.php">
+				<?php settings_fields( 'cognito-settings' ); ?>
+				<?php do_settings_sections( 'cognito-settings' ); ?>
+
+				<table class="form-table">
+					<tr valign="top">
+						<th scope="row">Session Transfer URL</th>
+						<td><input class="regular-text" type="text" name="session_url" value="<?php echo esc_attr( get_option('session_url') ); ?>" /></td>
+					</tr>
+
+					<tr valign="top">
+						<th scope="row">Login Portal URL</th>
+						<td><input class="regular-text" type="text" name="login_url" value="<?php echo esc_attr( get_option('login_url') ); ?>" /></td>
+					</tr>
+				</table>
+				<hr />
+				<table class="form-table">
+					<tr valign="top">
+						<th scope="row">App Client ID</th>
+						<td><input class="regular-text" type="text" name="app_client_id" value="<?php echo esc_attr( get_option('app_client_id') ); ?>" /></td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">AWS Key ID (IAM)</th>
+						<td><input class="regular-text" type="text" name="aws_key_id" value="<?php echo esc_attr( get_option('aws_key_id') ); ?>" /></td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">AWS Key Secret</th>
+						<td><input class="regular-text" type="password" name="aws_key_secret" value="<?php echo esc_attr( get_option('aws_key_secret') ); ?>" /></td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">AWS Region</th>
+						<td><input class="regular-text" type="text" name="aws_region" value="<?php echo esc_attr( get_option('aws_region') ); ?>" /></td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">Cognito User Pool</th>
+						<td><input class="regular-text" type="text" name="aws_userpool_id" value="<?php echo esc_attr( get_option('aws_userpool_id') ); ?>" /></td>
+					</tr>
+				</table>
+
+				<?php submit_button(); ?>
+			</form>
+		</div>
+		<?php
+	}
 }
 
 new WP_Cognito_UserLogin();
+ 
