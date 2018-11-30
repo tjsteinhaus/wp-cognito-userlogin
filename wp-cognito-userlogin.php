@@ -246,7 +246,7 @@ class WP_Cognito_UserLogin {
      * @since 11/28/2018
      */
     private function isLoggedIn() {
-        if( !empty( $this->accessToken ) && !empty( $this->refreshToken ) && !empty( $this->idToken ) && !empty( $this->clientID ) ) {
+        if( !empty( $this->accessToken ) && !empty( $this->refreshToken ) && !empty( $this->idToken ) ) {
             $this->isExpired();
 
             return true;
