@@ -50,6 +50,9 @@ class WP_Cognito_UserLogin {
 					add_menu_page('Cognito Settings', 'Cognito Settings', 'administrator', __FILE__, array( $this, 'cognitoOptionsPage' ) );
 				} );
 
+				add_action ( 'edit_category_form_fields', array( $this, 'extra_category_fields') );
+				add_action ( 'edited_category', array( $this, 'save_extra_category_fields') );
+
 				add_action( 'admin_init', array( $this, 'registerSettings' ) );
                 return;
             }
@@ -65,7 +68,7 @@ class WP_Cognito_UserLogin {
 				$this->parseIdToken();
 				
 				if( WP_DEBUG ) {
-					echo '<pre>'.print_r( $_SESSION, true ).'</pre>';
+					echo 'Session Data <pre>'.print_r( $_SESSION, true ).'</pre>';
 					echo 'User Data <pre>'.print_r( $this->userData, true ). '</pre>';
 					echo 'Client Id <pre>'.print_r( $this->clientID, true ). '</pre>';
 					echo 'Refresh Token <pre>'.print_r( $this->refreshToken, true ). '</pre>';
@@ -246,7 +249,7 @@ class WP_Cognito_UserLogin {
      * @since 11/28/2018
      */
     private function isLoggedIn() {
-        if( !empty( $this->accessToken ) && !empty( $this->refreshToken ) && !empty( $this->idToken ) ) {
+        if( !empty( $this->accessToken ) && !empty( $this->refreshToken ) && !empty( $this->idToken ) && !empty( $this->clientID ) ) {
             $this->isExpired();
 
             return true;
@@ -274,20 +277,38 @@ class WP_Cognito_UserLogin {
      * @since 11/28/2018
      */
     private function hasAccessToPage() {
-        global $post;
-        $getSecurePage = get_post_meta( $post->ID, 'securePage', true );
+		if( is_page() || is_single() ) {
+			global $post;
 
-        // Does securePage exists in meta data, if it does, is it a secure page
-        $post_meta = get_post_custom( $post->ID );
-        if( ( is_page() || is_single() ) && isset( $post_meta['securePage'] ) && $getSecurePage ) {
-            if( !$this->isLoggedIn() ) {
-                return false;
-            }
-    
-            if( !$this->checkPermissions( 'VIEW_RISK_MANAGEMENT' ) ) {
-                return false;
-            }
-        }
+			$getSecurePage = get_post_meta( $post->ID, 'securePage', true );
+			
+			// Does securePage exists in meta data, if it does, is it a secure page
+			if( metadata_exists( $post->post_type, $post->ID, 'securePage' ) && $getSecurePage ) {
+				if( !$this->isLoggedIn() ) {
+					return false;
+				}
+		
+				if( !$this->checkPermissions( 'VIEW_RISK_MANAGEMENT' ) ) {
+					return false;
+				}
+			}
+		} elseif( is_category() ) {
+			global $wp_query;
+
+			$category = $wp_query->query_vars['cat'];
+			$getSecurePage = esc_attr( get_term_meta( $category, 'secure-page', true) );
+
+			// Does securePage exists in meta data, if it does, is it a secure page
+			if( metadata_exists( 'term', $category, 'secure-page' ) && $getSecurePage ) {
+				if( !$this->isLoggedIn() ) {
+					return false;
+				}
+		
+				if( !$this->checkPermissions( 'VIEW_RISK_MANAGEMENT' ) ) {
+					return false;
+				}
+			}
+		}
 
         return true;
     }
@@ -451,6 +472,49 @@ class WP_Cognito_UserLogin {
 			</form>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Adds the secure Category checkbox to categories
+	 * 
+	 * @since 12/07/2018
+	 */
+	function extra_category_fields( $tag ) {    //check for existing featured ID
+		$t_id = $tag->term_id;
+		$securePage = esc_attr( get_term_meta( $t_id, 'secure-page', true) );
+		?>
+		<tr class="form-field">
+			<th scope="row" valign="top">
+				<label for="cat_securePage"><?php _e('Secure Category'); ?></label><br />
+			</th>
+			<td>
+				<input 
+					type="checkbox" 
+					name="secure-page" 
+					id="Cat_meta[secure-page]" 
+					value="1"
+					<?php echo $securePage == '1' ? ' checked="checked"' : ''; ?>
+				><br />
+				<span class="description">Secure's the content and only risk management users can see them.</span>
+			</td>
+		</tr>
+	
+		<?php
+	}
+
+	/**
+	 * Saves the secure category in term meta
+	 * 
+	 * @since 12/07/2018
+	 */
+	function save_extra_category_fields( $term_id ) {
+		if( isset( $_POST['secure-page'] ) ) {
+			$securePage = 1;
+		} else {
+			$securePage = 0;
+		}
+		
+		update_term_meta($term_id, 'secure-page', $securePage );
 	}
 }
 
