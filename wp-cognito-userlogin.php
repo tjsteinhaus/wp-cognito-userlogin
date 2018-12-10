@@ -280,9 +280,15 @@ class WP_Cognito_UserLogin {
 		global $post;
 
 		$getSecurePage = get_post_meta( $post->ID, 'securePage', true );
+
+		if( $getSecurePage == 1 ) {
+			$getSecurePage = true;
+		} else {
+			$getSecurePage = false;
+		}
 		
 		// Does securePage exists in meta data, if it does, is it a secure page
-		if( ( is_page() || is_single() ) && metadata_exists( $post->post_type, $post->ID, 'securePage' ) && $getSecurePage ) {
+		if( ( is_page() || is_single() ) && $getSecurePage ) {
 			if( !$this->isLoggedIn() ) {
 				return false;
 			}
