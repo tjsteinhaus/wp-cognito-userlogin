@@ -175,7 +175,7 @@ class WP_Cognito_UserLogin {
         if( empty( $this->refreshToken ) ) return;
 
         $refresh = $this->awsclient->initiateAuth( [
-            'ClientId' => $this->client_id,
+            'ClientId' => $this->clientID,
             'AuthFlow' => 'REFRESH_TOKEN',
             'AuthParameters' => [
                 'REFRESH_TOKEN' => $this->refreshToken
