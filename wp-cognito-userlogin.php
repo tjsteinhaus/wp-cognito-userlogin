@@ -249,7 +249,7 @@ class WP_Cognito_UserLogin {
      * @since 11/28/2018
      */
     private function isLoggedIn() {
-        if( !empty( $this->accessToken ) && !empty( $this->refreshToken ) && !empty( $this->idToken ) && !empty( $this->clientID ) ) {
+        if( !empty( $this->accessToken ) && !empty( $this->refreshToken ) && !empty( $this->idToken ) ) {
             $this->isExpired();
 
             return true;
@@ -281,7 +281,7 @@ class WP_Cognito_UserLogin {
 
 		$getSecurePage = get_post_meta( $post->ID, 'securePage', true );
 
-		if( $getSecurePage == 1 ) {
+		if( $getSecurePage == '1' ) {
 			$getSecurePage = true;
 		} else {
 			$getSecurePage = false;
