@@ -277,20 +277,18 @@ class WP_Cognito_UserLogin {
      * @since 11/28/2018
      */
     private function hasAccessToPage() {
-		if( is_page() || is_single() ) {
-			global $post;
+		global $post;
 
-			$getSecurePage = get_post_meta( $post->ID, 'securePage', true );
-			
-			// Does securePage exists in meta data, if it does, is it a secure page
-			if( metadata_exists( $post->post_type, $post->ID, 'securePage' ) && $getSecurePage ) {
-				if( !$this->isLoggedIn() ) {
-					return false;
-				}
+		$getSecurePage = get_post_meta( $post->ID, 'securePage', true );
 		
-				if( !$this->checkPermissions( 'VIEW_RISK_MANAGEMENT' ) ) {
-					return false;
-				}
+		// Does securePage exists in meta data, if it does, is it a secure page
+		if( ( is_page() || is_single() ) && metadata_exists( $post->post_type, $post->ID, 'securePage' ) && $getSecurePage ) {
+			if( !$this->isLoggedIn() ) {
+				return false;
+			}
+	
+			if( !$this->checkPermissions( 'VIEW_RISK_MANAGEMENT' ) ) {
+				return false;
 			}
 		} elseif( is_category() ) {
 			global $wp_query;
