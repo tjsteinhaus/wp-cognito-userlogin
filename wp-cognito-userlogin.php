@@ -326,6 +326,7 @@ class WP_Cognito_UserLogin {
      */
     public function setupFrontend() {
 		$this->fetchCognitoSession();
+		$this->logout();
         if( !$this->hasAccessToPage() ) {
             header( 'Location: ' . get_option( 'login_url' ) );
         }
@@ -375,6 +376,28 @@ class WP_Cognito_UserLogin {
 		}
 
 		header( "Location: " . $requestUri );
+		exit();
+	}
+
+	/**
+	 * Log User Out
+	 * 
+	 * @since 12/17/2018
+	 */
+	public function logout() {
+		$logout = esc_attr( $_REQUEST['logout'] );
+
+		if( !isset( $logout ) ) {
+			return false;
+		}
+
+		if( $logout != 'true' ) {
+			return false;
+		}
+
+		$this->deleteSessions();
+
+		header( "Location: /" );
 		exit();
 	}
 
