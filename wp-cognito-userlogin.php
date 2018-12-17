@@ -524,5 +524,5 @@ class WP_Cognito_UserLogin {
 	}
 }
 
-new WP_Cognito_UserLogin();
+$WP_Cognito_UserLogin = new WP_Cognito_UserLogin();
  
