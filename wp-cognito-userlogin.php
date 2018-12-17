@@ -99,7 +99,9 @@ class WP_Cognito_UserLogin {
                 'secret' => get_option( 'aws_key_secret' ),
             ],
             'http' => [ 'verify' => false ]
-        ] );
+		] );
+		
+		$this->clientID = get_option( 'app_client_id' );
 	}
 	
 	/**
@@ -248,7 +250,7 @@ class WP_Cognito_UserLogin {
      * 
      * @since 11/28/2018
      */
-    private function isLoggedIn() {
+    public function isLoggedIn() {
         if( !empty( $this->accessToken ) && !empty( $this->refreshToken ) && !empty( $this->idToken ) ) {
             $this->isExpired();
 
@@ -265,7 +267,7 @@ class WP_Cognito_UserLogin {
      * 
      * @param $permission (string) Permission you want to see if the user has access to
      */
-    private function checkPermissions( $permission ) {
+    public function checkPermissions( $permission ) {
         $permissions = in_array( $permission, json_decode( $this->userData->permission ) );
 
         return $permissions;
